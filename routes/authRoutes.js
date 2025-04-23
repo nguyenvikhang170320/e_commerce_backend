@@ -358,6 +358,21 @@ router.put('/verify-request/:id/reject', verifyToken, async (req, res) => {
         res.status(500).json({ msg: 'Lỗi server', error: err.message });
     }
 });
-
+// 📌 Lấy thông tin người dùng hiện tại từ token
+router.get('/me', verifyToken, async (req, res) => {
+    try {
+      const user = req.user; // req.user được middleware verifyToken thêm vào
+      res.json({
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        name: user.name,
+      });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ msg: 'Lỗi máy chủ khi lấy thông tin người dùng' });
+    }
+  });
+  
 
 module.exports = router;

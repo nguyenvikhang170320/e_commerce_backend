@@ -30,13 +30,13 @@ app.use('/api/auth', authRoutes);
 const verifyRoutes = require('./routes/verifyRoutes');
 app.use('/api/verify', verifyRoutes);
 const productRoutes = require('./routes/productRoutes');
-app.use('/api/product', productRoutes);
+app.use('/api/products', productRoutes);
 const cartRoutes = require('./routes/cartRoutes');
-app.use('/api/cart', cartRoutes);
+app.use('/api/carts', cartRoutes);
 const orderRoutes = require('./routes/orderRoutes');
-app.use('/api/cart', orderRoutes);
+app.use('/api/orders', orderRoutes);
 const revenueRoutes = require('./routes/revenueRoutes');
-app.use('/api/revenue', revenueRoutes);
+app.use('/api/revenues', revenueRoutes);
 const categoryRoutes = require('./routes/categoryRoutes');
 app.use('/api/categories', categoryRoutes);
 // ...

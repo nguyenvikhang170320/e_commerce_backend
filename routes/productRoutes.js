@@ -20,41 +20,80 @@ router.post('/', verifyToken, isSelfOrAdmin, async (req, res) => {
       [name, description, price, image, category_id, seller_id]
     );
     res.status(201).json({ msg: 'Thêm sản phẩm thành công' });
+    console.log(`Thêm sản phẩm thành công`);
   } catch (err) {
     console.error(err);
     res.status(500).json({ msg: 'Lỗi máy chủ khi thêm sản phẩm' });
   }
 });
 
-// 📌 Lấy tất cả sản phẩm (có phân trang + lọc theo category)
-router.get('/', async (req, res) => {
-  const { page = 1, limit = 10, category_id } = req.query;
-  const offset = (parseInt(page) - 1) * parseInt(limit);
+
+// 📌 Lấy danh sách sản phẩm theo categoryId
+router.get('/category', async (req, res) => {
+  const categoryId = req.query.category_id || req.query.categoryId;
+
+  if (!categoryId) {
+    return res.status(400).json({ msg: 'Category ID is required' });
+  }
 
   try {
-    let sql = `
+    const [products] = await db.query(
+      `SELECT p.*, c.name AS category_name, u.name AS seller_name
+       FROM products p
+       JOIN categories c ON p.category_id = c.id
+       JOIN users u ON p.seller_id = u.id
+       WHERE p.category_id = ?`, 
+      [categoryId]
+    );
+
+    res.json(products);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: 'Server error when fetching products' });
+  }
+});
+
+
+// 📌 Lấy danh sách sản phẩm nổi bật
+router.get('/featured', async (req, res) => {
+  try {
+    // Ví dụ: lấy 3 sản phẩm nổi bật mới nhất
+    const [products] = await db.query(`
       SELECT p.*, c.name AS category_name, u.name AS seller_name
       FROM products p
       JOIN categories c ON p.category_id = c.id
       JOIN users u ON p.seller_id = u.id
-    `;
-    const params = [];
+      WHERE p.is_featured = 1
+      ORDER BY p.created_at DESC
+      LIMIT 3
+    `);
 
-    if (category_id) {
-      sql += ' WHERE p.category_id = ?';
-      params.push(category_id);
-    }
+    res.json(products);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: 'Lỗi máy chủ khi lấy sản phẩm nổi bật' });
+  }
+});
 
-    sql += ' ORDER BY p.created_at DESC LIMIT ? OFFSET ?';
-    params.push(parseInt(limit), offset);
 
-    const [products] = await db.query(sql, params);
+// 📌 Lấy tất cả sản phẩm (có phân trang + lọc theo category)
+router.get('/', async (req, res) => {
+  try {
+    const [products] = await db.query(
+      `SELECT p.*, c.name AS category_name, u.name AS seller_name
+       FROM products p
+       JOIN categories c ON p.category_id = c.id
+       JOIN users u ON p.seller_id = u.id
+       ORDER BY p.created_at DESC`
+    );
+
     res.json(products);
   } catch (err) {
     console.error(err);
     res.status(500).json({ msg: 'Lỗi máy chủ khi lấy sản phẩm' });
   }
 });
+
 
 // 📌 Lấy chi tiết sản phẩm
 router.get('/:id', async (req, res) => {
@@ -103,6 +142,7 @@ router.put('/:id', verifyToken, isSelfOrAdmin, async (req, res) => {
     );
 
     res.json({ msg: 'Cập nhật sản phẩm thành công' });
+    console.log(`Cập nhật sản phẩm thành công`);
   } catch (err) {
     console.error(err);
     res.status(500).json({ msg: 'Lỗi máy chủ khi cập nhật sản phẩm' });
@@ -124,6 +164,7 @@ router.delete('/:id', verifyToken, isSelfOrAdmin, async (req, res) => {
 
     await db.query('DELETE FROM products WHERE id = ?', [id]);
     res.json({ msg: 'Xóa sản phẩm thành công' });
+    console.log(`Xóa sản phẩm thành công`);
   } catch (err) {
     console.error(err);
     res.status(500).json({ msg: 'Lỗi máy chủ khi xóa sản phẩm' });
