@@ -6,7 +6,7 @@ const { isSelfOrAdmin } = require('../middleware/role_admin_seller');  // Đảm
 
 // 📌 Tạo sản phẩm mới
 router.post('/', verifyToken, isSelfOrAdmin, async (req, res) => {
-  const { name, description = '', price, image = '', category_id } = req.body;
+  const { name, description = '', price, image = '', category_id, stock = 0 } = req.body; // ✅ Lấy thêm trường stock và đặt giá trị mặc định là 0
   const seller_id = req.user.id;
 
   if (!name || !price || !category_id) {
@@ -15,9 +15,9 @@ router.post('/', verifyToken, isSelfOrAdmin, async (req, res) => {
 
   try {
     await db.query(
-      `INSERT INTO products (name, description, price, image, category_id, seller_id, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, NOW())`,
-      [name, description, price, image, category_id, seller_id]
+      `INSERT INTO products (name, description, price, image, category_id, seller_id, stock, created_at) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
+      [name, description, price, image, category_id, seller_id, stock] // ✅ Thêm giá trị stock vào mảng giá trị
     );
     res.status(201).json({ msg: 'Thêm sản phẩm thành công' });
     console.log(`Thêm sản phẩm thành công`);
@@ -123,7 +123,7 @@ router.get('/:id', async (req, res) => {
 // 📌 Cập nhật sản phẩm
 router.put('/:id', verifyToken, isSelfOrAdmin, async (req, res) => {
   const { id } = req.params;
-  const { name, description = '', price, image = '', category_id } = req.body;
+  const { name, description = '', price, image = '', category_id, stock } = req.body; // ✅ Lấy thêm trường stock từ req.body
 
   try {
     const [[product]] = await db.query('SELECT * FROM products WHERE id = ?', [id]);
@@ -135,10 +135,10 @@ router.put('/:id', verifyToken, isSelfOrAdmin, async (req, res) => {
     }
 
     await db.query(
-      `UPDATE products 
-       SET name = ?, description = ?, price = ?, image = ?, category_id = ? 
+      `UPDATE products
+       SET name = ?, description = ?, price = ?, image = ?, category_id = ?, stock = ? 
        WHERE id = ?`,
-      [name, description, price, image, category_id, id]
+      [name, description, price, image, category_id, stock, id] // ✅ Thêm giá trị stock vào mảng giá trị
     );
 
     res.json({ msg: 'Cập nhật sản phẩm thành công' });
