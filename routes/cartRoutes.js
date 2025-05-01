@@ -7,46 +7,54 @@ const { isSelfOrAdmin } = require('../middleware/role_admin_seller');
 // 📌 Lấy tất cả sản phẩm trong giỏ của user
 router.get('/', verifyToken, async (req, res) => {
   const userId = req.user.id;
+  console.log(`[${new Date().toISOString()}] Yêu cầu lấy giỏ hàng từ user ID: ${userId}`);
 
   try {
     const [cartItems] = await db.query(
-      `SELECT c.id, c.product_id, c.quantity, p.name, p.price, p.image 
+      `SELECT c.id, c.product_id, c.quantity, p.name, p.price, p.image, c.added_at
        FROM carts c
        JOIN products p ON c.product_id = p.id
        WHERE c.user_id = ?`,
       [userId]
     );
 
+    console.log(`[${new Date().toISOString()}] Dữ liệu giỏ hàng lấy từ database:`, cartItems);
     res.json(cartItems);
+    console.log(`[${new Date().toISOString()}] Phản hồi dữ liệu giỏ hàng thành công cho user ID: ${userId}`);
+
   } catch (err) {
-    console.error(err);
+    console.error(`[${new Date().toISOString()}] Lỗi khi lấy giỏ hàng cho user ID ${userId}:`, err);
     res.status(500).json({ msg: 'Lỗi khi lấy giỏ hàng' });
   }
 });
 
-// 📌 Thêm sản phẩm vào giỏ hàng
+// Thêm giỏ hàng
 router.post('/', verifyToken, async (req, res) => {
   const userId = req.user.id;
-  const { product_id } = req.body;
-
-  // Mặc định mỗi lần thêm là 1 sản phẩm
-  const quantityToAdd = 1;
+  const { product_id, quantity } = req.body;
 
   console.log('🟡 Người dùng ID:', userId);
   console.log('🟡 Sản phẩm thêm vào:', product_id);
+  console.log('🟡 Số lượng yêu cầu:', quantity);
 
   if (!product_id) {
     console.log('❌ Thiếu product_id');
     return res.status(400).json({ error: 'Thiếu thông tin sản phẩm' });
   }
 
+  const quantityToSet = quantity ?? 1; // Nếu không gửi quantity thì mặc định là 1
+  if (quantityToSet <= 0) {
+    console.log('❌ Số lượng không hợp lệ');
+    return res.status(400).json({ error: 'Số lượng phải lớn hơn 0' });
+  }
+
   const conn = await db.getConnection();
   try {
-    await conn.beginTransaction();
+    await conn.beginTransaction(); // Bắt đầu giao dịch
 
-    // 1. Kiểm tra sản phẩm
+    // 1️⃣ Kiểm tra sản phẩm có tồn tại không
     const [[product]] = await conn.query(
-      'SELECT id, price, stock, image FROM products WHERE id = ?',
+      'SELECT id, price, stock, image, name FROM products WHERE id = ?',
       [product_id]
     );
     console.log('📦 Dữ liệu sản phẩm:', product);
@@ -56,47 +64,37 @@ router.post('/', verifyToken, async (req, res) => {
       return res.status(404).json({ error: 'Sản phẩm không tồn tại' });
     }
 
-    // 2. Kiểm tra sản phẩm đã có trong giỏ chưa, cần kiểm tra theo userId và productId
-    const [[existingItem]] = await conn.query(
-      'SELECT id, quantity FROM carts WHERE user_id = ? AND product_id = ?',
-      [userId, product_id]
-    );
-    console.log('📥 Sản phẩm đã có trong giỏ:', existingItem);
-
-    if (existingItem) {
-      const newQuantity = existingItem.quantity;
-
-      if (product.stock < newQuantity) {
-        console.log(`❌ Vượt tồn kho: hiện tại ${product.stock}, yêu cầu ${newQuantity}`);
-        return res.status(400).json({ error: `Chỉ còn ${product.stock} sản phẩm trong kho` });
-      }
-
-      await conn.query(
-        'UPDATE carts SET quantity = ? WHERE id = ?',
-        [newQuantity, existingItem.id]
-      );
-      console.log(`✅ Cập nhật số lượng giỏ hàng ID ${existingItem.id} thành ${newQuantity}`);
-    } else {
-      if (product.stock < 1) {
-        console.log('❌ Sản phẩm đã hết hàng');
-        return res.status(400).json({ error: 'Sản phẩm đã hết hàng' });
-      }
-
-      await conn.query(
-        'INSERT INTO carts (user_id, product_id, quantity, image) VALUES (?, ?, ?, ?)',
-        [userId, product_id, quantityToAdd, product.image]
-      );
-      console.log('✅ Thêm mới sản phẩm vào giỏ');
+    // 2️⃣ Kiểm tra nếu sản phẩm hết hàng (stock = 0)
+    if (product.stock === 0) {
+      console.log('❌ Sản phẩm hết hàng');
+      return res.status(400).json({ error: 'Sản phẩm đã hết hàng' });
     }
 
-    await conn.commit();
+    // 3️⃣ Kiểm tra còn đủ hàng không (chỉ để cảnh báo)
+    if (quantityToSet > product.stock) {
+      console.log(`❌ Vượt tồn kho: hiện tại ${product.stock}, yêu cầu ${quantityToSet}`);
+      return res.status(400).json({ error: `Chỉ còn ${product.stock} sản phẩm trong kho` });
+    }
 
-    // 3. Trả về item mới nhất
+    // 4️⃣ Thêm mới vào giỏ hàng (dù trùng sản phẩm cũng tạo mới)
+    console.log('🆕 Thêm mới sản phẩm vào giỏ...');
+    await conn.query(
+      'INSERT INTO carts (user_id, product_id, quantity, image) VALUES (?, ?, ?, ?)',
+      [userId, product_id, quantityToSet, product.image]
+    );
+    console.log('✅ Đã thêm mới sản phẩm vào giỏ');
+
+    await conn.commit(); // Xác nhận giao dịch nếu không có lỗi
+    console.log('✅ Giao dịch thành công');
+
+    // 5️⃣ Trả về item vừa thêm
     const [[newCartItem]] = await conn.query(
-      `SELECT c.*, p.name, p.price, p.image 
+      `SELECT c.*, p.name, p.price, p.image ,c.added_at
        FROM carts c 
        JOIN products p ON c.product_id = p.id
-       WHERE c.user_id = ? AND c.product_id = ?`,
+       WHERE c.user_id = ? AND c.product_id = ?
+       ORDER BY c.id DESC
+       LIMIT 1`,
       [userId, product_id]
     );
     console.log('🎁 Trả về giỏ hàng:', newCartItem);
@@ -107,11 +105,11 @@ router.post('/', verifyToken, async (req, res) => {
     });
 
   } catch (err) {
-    await conn.rollback();
+    await conn.rollback(); // Nếu có lỗi, rollback giao dịch
     console.error('❌ Lỗi giỏ hàng:', err);
     res.status(500).json({ error: 'Lỗi hệ thống' });
   } finally {
-    conn.release();
+    conn.release(); // Giải phóng kết nối
   }
 });
 
@@ -156,19 +154,40 @@ router.put('/:id', verifyToken, async (req, res) => {
 // 📌 Xóa sản phẩm khỏi giỏ hàng
 router.delete('/:id', verifyToken, async (req, res) => {
   const cartId = req.params.id;
+  const userId = req.user.id;
+  const userRole = req.user.role; // Lấy role từ token
 
   try {
     const [[item]] = await db.query('SELECT * FROM carts WHERE id = ?', [cartId]);
-    if (!item || item.user_id !== req.user.id) {
+
+    if (!item) {
       return res.status(404).json({ msg: 'Không tìm thấy sản phẩm trong giỏ' });
     }
 
+    // ✅ Kiểm tra quyền xóa: Chỉ cho phép user hoặc seller xóa sản phẩm trong giỏ của chính mình.
+    // Admin không có quyền xóa sản phẩm của người khác.
+    if (userRole !== 'admin' && item.user_id !== userId) {
+      return res.status(403).json({ msg: 'Bạn không có quyền xóa sản phẩm này' });
+    }
+
+    // ✅ Xóa sản phẩm khỏi giỏ hàng:
     await db.query('DELETE FROM carts WHERE id = ?', [cartId]);
-    res.json({ msg: 'Đã xóa khỏi giỏ hàng' });
+
+    console.log(`🗑️ Đã xóa cart ID ${cartId}`);
+    res.json({
+      success: true,
+      msg: 'Đã xóa khỏi giỏ hàng',
+      data: {
+        cartId,
+        product_id: item.product_id,
+        quantity: item.quantity
+      }
+    });
   } catch (err) {
-    console.error(err);
+    console.error('❌ Lỗi khi xóa giỏ hàng:', err);
     res.status(500).json({ msg: 'Lỗi khi xóa sản phẩm khỏi giỏ hàng' });
   }
 });
+
 
 module.exports = router;
