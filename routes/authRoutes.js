@@ -6,6 +6,12 @@ const jwt = require('jsonwebtoken');
 const nodemailer = require('nodemailer');
 const moment = require('moment'); // dùng để lấy thời gian hiện tại nếu bạn thích định dạng rõ ràng
 const { verifyToken } = require('../utils/token'); // Cập nhật đúng path tới file token.js
+const cloudinary = require('../cloudinary');
+const multer = require('multer');
+
+// Set up multer storage (assuming you're using diskStorage)
+const storage = multer.diskStorage({});
+const upload = multer({ storage });
 // Đăng ký
 router.post('/register', async (req, res) => {
     const { name, email, password, role, phone, image } = req.body;
