@@ -181,28 +181,34 @@ router.put('/update-profile/:id', verifyToken, upload.single('image'), async (re
     console.log('Dữ liệu nhận được:', { name, email, phone });
 
     try {
-        // 👉 Kiểm tra nếu token user không trùng id => cấm chỉnh sửa người khác
+        // Kiểm tra nếu token user không trùng id => cấm chỉnh sửa người khác
         if (req.user.id !== parseInt(id)) {
             return res.status(403).json({ msg: 'Bạn không có quyền chỉnh sửa hồ sơ này' });
         }
+
         const [existing] = await pool.query('SELECT * FROM users WHERE id = ?', [id]);
         if (existing.length === 0) {
             return res.status(404).json({ msg: 'Người dùng không tồn tại' });
         }
 
-        let imageUrl = existing[0].image; // giữ ảnh cũ nếu không upload mới
+        // Lấy role hiện tại của user
+        const currentRole = existing[0].role;
+        
+        // Giữ ảnh cũ nếu không upload ảnh mới
+        let imageUrl = existing[0].image;
 
         if (req.file) {
             // Upload ảnh lên Cloudinary
             const uploadResult = await cloudinary.uploader.upload(req.file.path, {
-                folder: 'user_profiles', // Tùy bạn đặt folder
+                folder: 'user_profiles', // Folder Cloudinary
             });
             imageUrl = uploadResult.secure_url;
         }
 
+        // Cập nhật thông tin user mà không thay đổi role
         await pool.query(
-            'UPDATE users SET name = ?, email = ?, phone = ?, image = ? WHERE id = ?',
-            [name, email, phone, imageUrl, id]
+            'UPDATE users SET name = ?, email = ?, phone = ?, image = ?, role = ? WHERE id = ?',
+            [name, email, phone, imageUrl, currentRole, id]
         );
 
         console.log(`✅ Đã cập nhật user id ${id} thành công.`);
