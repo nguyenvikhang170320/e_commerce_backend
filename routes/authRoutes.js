@@ -10,27 +10,27 @@ const { verifyToken } = require('../utils/token'); // Cập nhật đúng path t
 router.post('/register', async (req, res) => {
     const { name, email, password, role, phone, image } = req.body;
     try {
-      const [existing] = await pool.query('SELECT * FROM users WHERE email = ?', [email]);
-      if (existing.length > 0) {
-        console.log(`Đăng ký thất bại: email ${email} đã tồn tại`);
-        return res.status(400).json({ msg: 'Email đã tồn tại' });
-      }
-  
-      const hashedPassword = await bcrypt.hash(password, 10);
-      const createdAt = moment().format('YYYY-MM-DD HH:mm:ss');
-  
-      await pool.query(
-        'INSERT INTO users (name, email, password, role, phone, image, is_verified, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-        [name, email, hashedPassword, role, phone || null, image || null, 0, createdAt]
-      );
-  
-      console.log(`Đăng ký thành công: ${email}`);
-      res.status(201).json({ msg: 'Đăng ký thành công' });
+        const [existing] = await pool.query('SELECT * FROM users WHERE email = ?', [email]);
+        if (existing.length > 0) {
+            console.log(`Đăng ký thất bại: email ${email} đã tồn tại`);
+            return res.status(400).json({ msg: 'Email đã tồn tại' });
+        }
+
+        const hashedPassword = await bcrypt.hash(password, 10);
+        const createdAt = moment().format('YYYY-MM-DD HH:mm:ss');
+
+        await pool.query(
+            'INSERT INTO users (name, email, password, role, phone, image, is_verified, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+            [name, email, hashedPassword, role, phone || null, image || null, 0, createdAt]
+        );
+
+        console.log(`Đăng ký thành công: ${email}`);
+        res.status(201).json({ msg: 'Đăng ký thành công' });
     } catch (err) {
-      console.error('Lỗi khi đăng ký:', err);
-      res.status(500).json({ msg: 'Lỗi server', error: err.message });
+        console.error('Lỗi khi đăng ký:', err);
+        res.status(500).json({ msg: 'Lỗi server', error: err.message });
     }
-  });
+});
 
 // Đăng nhập
 router.post('/login', async (req, res) => {
@@ -117,13 +117,13 @@ router.post('/forgot-password', async (req, res) => {
 
 
 // Đặt lại mật khẩu bằng OTP
-router.post('/reset-password',verifyToken, async (req, res) => {
+router.post('/reset-password', async (req, res) => {
     const { email, otp, newPassword } = req.body;
 
     try {
         // Lấy bản ghi reset_token tương ứng
         const [tokens] = await pool.query(
-            'SELECT * FROM reset_tokens WHERE email = ? AND otp = ?', 
+            'SELECT * FROM reset_tokens WHERE email = ? AND otp = ?',
             [email, otp]
         );
         console.log('Người dùng xác thực:', req.user);
@@ -165,36 +165,49 @@ router.post('/reset-password',verifyToken, async (req, res) => {
 });
 
 
-
-// ✅ Cập nhật thông tin người dùng
-router.put('/update-profile/:id', async (req, res) => {
+// ✅ Cập nhật profile (kèm upload ảnh)
+router.put('/update-profile/:id', verifyToken, upload.single('image'), async (req, res) => {
     const { id } = req.params;
-    const { name, email, role } = req.body;
+    const { name, email, phone } = req.body;
 
     console.log('===== YÊU CẦU CẬP NHẬT PROFILE =====');
     console.log('User ID:', id);
-    console.log('Dữ liệu nhận được:', { name, email, role });
+    console.log('Dữ liệu nhận được:', { name, email, phone });
 
     try {
+        // 👉 Kiểm tra nếu token user không trùng id => cấm chỉnh sửa người khác
+        if (req.user.id !== parseInt(id)) {
+            return res.status(403).json({ msg: 'Bạn không có quyền chỉnh sửa hồ sơ này' });
+        }
         const [existing] = await pool.query('SELECT * FROM users WHERE id = ?', [id]);
         if (existing.length === 0) {
-            console.warn(`Không tìm thấy người dùng với id: ${id}`);
             return res.status(404).json({ msg: 'Người dùng không tồn tại' });
         }
 
+        let imageUrl = existing[0].image; // giữ ảnh cũ nếu không upload mới
+
+        if (req.file) {
+            // Upload ảnh lên Cloudinary
+            const uploadResult = await cloudinary.uploader.upload(req.file.path, {
+                folder: 'user_profiles', // Tùy bạn đặt folder
+            });
+            imageUrl = uploadResult.secure_url;
+        }
+
         await pool.query(
-            'UPDATE users SET name = ?, email = ?, role = ? WHERE id = ?',
-            [name, email, role, id]
+            'UPDATE users SET name = ?, email = ?, phone = ?, image = ? WHERE id = ?',
+            [name, email, phone, imageUrl, id]
         );
 
         console.log(`✅ Đã cập nhật user id ${id} thành công.`);
 
-        res.json({ msg: 'Cập nhật thông tin thành công' });
+        res.json({ msg: 'Cập nhật thông tin thành công', image: imageUrl });
     } catch (err) {
         console.error('❌ Lỗi khi cập nhật thông tin người dùng:', err);
         res.status(500).json({ msg: 'Lỗi server', error: err.message });
     }
 });
+
 
 // ✅ Lấy thông tin người dùng theo ID
 router.get('/profile/:id', async (req, res) => {
@@ -203,7 +216,7 @@ router.get('/profile/:id', async (req, res) => {
     console.log('Yêu cầu lấy thông tin người dùng:', id);
 
     try {
-        const [users] = await pool.query('SELECT id, name, email, role, image FROM users WHERE id = ?', [id]);
+        const [users] = await pool.query('SELECT id, name, email, role,phone, image FROM users WHERE id = ?', [id]);
         if (users.length === 0) {
             console.log('Không tìm thấy người dùng');
             return res.status(404).json({ msg: 'Người dùng không tồn tại' });
@@ -217,7 +230,7 @@ router.get('/profile/:id', async (req, res) => {
 });
 
 // ✅ Đổi mật khẩu sau khi đã đăng nhập
-router.put('/change-password/:id',verifyToken, async (req, res) => {
+router.put('/change-password/:id', verifyToken, async (req, res) => {
     const { id } = req.params;
     const { oldPassword, newPassword } = req.body;
 
@@ -361,18 +374,18 @@ router.put('/verify-request/:id/reject', verifyToken, async (req, res) => {
 // 📌 Lấy thông tin người dùng hiện tại từ token
 router.get('/me', verifyToken, async (req, res) => {
     try {
-      const user = req.user; // req.user được middleware verifyToken thêm vào
-      res.json({
-        id: user.id,
-        email: user.email,
-        role: user.role,
-        name: user.name,
-      });
+        const user = req.user; // req.user được middleware verifyToken thêm vào
+        res.json({
+            id: user.id,
+            email: user.email,
+            role: user.role,
+            name: user.name,
+        });
     } catch (err) {
-      console.error(err);
-      res.status(500).json({ msg: 'Lỗi máy chủ khi lấy thông tin người dùng' });
+        console.error(err);
+        res.status(500).json({ msg: 'Lỗi máy chủ khi lấy thông tin người dùng' });
     }
-  });
-  
+});
+
 
 module.exports = router;
