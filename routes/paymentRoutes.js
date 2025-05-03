@@ -35,10 +35,11 @@ router.post('/create-checkout-session', async (req, res) => {
 
     console.log('✅ Tạo session Stripe thành công:', session.id);
 
-    // ✅ Cập nhật bảng orders sau khi tạo session
+
+    // ✅ CHỈ cập nhật stripe_session_id, KHÔNG update paid/completed ngay
     await db.query(
-      'UPDATE orders SET payment_status = ?, status = ?, stripe_session_id = ? WHERE id = ?',
-      ['paid', 'completed', session.id, orderId]
+      'UPDATE orders SET stripe_session_id = ? WHERE id = ?',
+      [session.id, orderId]
     );
 
     console.log(`✅ Đã cập nhật đơn hàng ${orderId}: payment_status = "paid", status = "completed", stripe_session_id = ${session.id}`);
@@ -49,6 +50,69 @@ router.post('/create-checkout-session', async (req, res) => {
     res.status(500).json({ error: 'Stripe session failed' });
   }
 });
+
+// routes/paymentRoutes.js (thêm webhook)
+
+router.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+  const sig = req.headers['stripe-signature'];
+
+  let event;
+
+  try {
+    event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
+  } catch (err) {
+    console.error('⚠️ Webhook signature verification failed.', err.message);
+    return res.status(400).send(`Webhook Error: ${err.message}`);
+  }
+
+  // Xử lý event
+  if (event.type === 'checkout.session.completed') {
+    const session = event.data.object;
+
+    const orderId = session.metadata.orderId;
+
+    console.log(`✅ Thanh toán Stripe thành công cho order ID: ${orderId}`);
+
+    // Cập nhật orders: paid + completed
+    await db.query(
+      'UPDATE orders SET payment_status = ?, status = ? WHERE id = ?',
+      ['paid', 'completed', orderId]
+    );
+
+    // Lấy thông tin đơn để cập nhật doanh thu
+    const [orderItems] = await db.query(
+      'SELECT oi.*, p.seller_id FROM order_items oi JOIN products p ON oi.product_id = p.id WHERE oi.order_id = ?',
+      [orderId]
+    );
+
+    const now = new Date();
+    const month = now.getMonth() + 1;
+    const year = now.getFullYear();
+
+    for (const item of orderItems) {
+      const revenue = item.quantity * item.price;
+      const [existingRevenue] = await db.query(
+        'SELECT total_revenue FROM revenue_tracking WHERE seller_id = ? AND month = ? AND year = ?',
+        [item.seller_id, month, year]
+      );
+
+      if (existingRevenue.length > 0) {
+        await db.query(
+          'UPDATE revenue_tracking SET total_revenue = total_revenue + ? WHERE seller_id = ? AND month = ? AND year = ?',
+          [revenue, item.seller_id, month, year]
+        );
+      } else {
+        await db.query(
+          'INSERT INTO revenue_tracking (seller_id, month, year, total_revenue, created_at) VALUES (?, ?, ?, ?, NOW())',
+          [item.seller_id, month, year, revenue]
+        );
+      }
+    }
+  }
+
+  res.json({ received: true });
+});
+
 
 
 module.exports = router;
