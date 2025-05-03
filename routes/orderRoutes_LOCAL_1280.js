@@ -212,11 +212,7 @@ router.put('/:id/status', verifyToken, async (req, res) => {
     }
 
     // Nếu trạng thái mới là "canceled", hoàn lại stock cho từng sản phẩm và cập nhật doanh thu
-<<<<<<< HEAD
     if (status === 'canceled' && payment_status === 'failed') {
-=======
-    if (status === 'canceled' && payment_status=== 'failed') {
->>>>>>> c9a845f4f2722930423bd7a90afd4a4de55a4849
       console.log(`⛔ Đơn hàng ${orderId} bị hủy, hoàn lại kho hàng và doanh thu`);
 
       // Lấy danh sách các sản phẩm trong đơn hàng

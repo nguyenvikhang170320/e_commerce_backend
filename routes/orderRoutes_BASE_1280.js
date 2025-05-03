@@ -212,11 +212,7 @@ router.put('/:id/status', verifyToken, async (req, res) => {
     }
 
     // Nếu trạng thái mới là "canceled", hoàn lại stock cho từng sản phẩm và cập nhật doanh thu
-<<<<<<< HEAD
-    if (status === 'canceled' && payment_status === 'failed') {
-=======
-    if (status === 'canceled' && payment_status=== 'failed') {
->>>>>>> c9a845f4f2722930423bd7a90afd4a4de55a4849
+    if (status === 'canceled') {
       console.log(`⛔ Đơn hàng ${orderId} bị hủy, hoàn lại kho hàng và doanh thu`);
 
       // Lấy danh sách các sản phẩm trong đơn hàng
@@ -261,8 +257,8 @@ router.put('/:id/status', verifyToken, async (req, res) => {
       console.log(`✅ Đã cập nhật payment_status của đơn hàng ${orderId} thành "${payment_status}"`);
     }
 
-    // Nếu trạng thái thanh toán là "paid" và trạng thái đơn hàng "completed", xử lý cập nhật doanh thu
-    if (status === 'completed' || payment_status === 'paid') {
+    // Nếu trạng thái là "paid", xử lý cập nhật doanh thu
+    if (status === 'completed' && payment_status === 'paid') {
       console.log(`✅ Đơn hàng ${orderId} đã thanh toán thành công, cập nhật doanh thu`);
 
       const [orderItems] = await db.query(
