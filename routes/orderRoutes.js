@@ -258,7 +258,7 @@ router.put('/:id/status', verifyToken, async (req, res) => {
     }
 
     // Nếu trạng thái thanh toán là "paid" và trạng thái đơn hàng "completed", xử lý cập nhật doanh thu
-    if (status === 'completed' && payment_status === 'paid') {
+    if (status === 'completed' || payment_status === 'paid') {
       console.log(`✅ Đơn hàng ${orderId} đã thanh toán thành công, cập nhật doanh thu`);
 
       const [orderItems] = await db.query(
