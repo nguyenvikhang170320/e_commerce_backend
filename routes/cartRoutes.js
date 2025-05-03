@@ -114,9 +114,6 @@ router.post('/', verifyToken, async (req, res) => {
 });
 
 
-
-
-
 // 📌 Cập nhật số lượng sản phẩm trong giỏ
 router.put('/:id', verifyToken, async (req, res) => {
   const cartId = req.params.id;

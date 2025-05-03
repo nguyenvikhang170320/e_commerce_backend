@@ -100,21 +100,21 @@ router.get('/all', verifyToken, async (req, res) => {
 
     if (req.user.role === 'admin') {
       const [results] = await db.query(
-        `SELECT o.*, u.name as customer_name 
-         FROM orders o 
-         JOIN users u ON o.user_id = u.id 
-         ORDER BY o.created_at DESC`
+        `SELECT o.*, u.name as customer_name
+              FROM orders o
+              JOIN users u ON o.user_id = u.id
+              ORDER BY o.created_at DESC`
       );
       orders = results;
     } else if (req.user.role === 'seller') {
       const [results] = await db.query(
         `SELECT DISTINCT o.*, u.name as customer_name
-         FROM orders o
-         JOIN order_items oi ON o.id = oi.order_id
-         JOIN products p ON oi.product_id = p.id
-         JOIN users u ON o.user_id = u.id
-         WHERE p.seller_id = ?
-         ORDER BY o.created_at DESC`,
+              FROM orders o
+              JOIN order_items oi ON o.id = oi.order_id
+              JOIN products p ON oi.product_id = p.id
+              JOIN users u ON o.user_id = u.id
+              WHERE p.seller_id = ?
+              ORDER BY o.created_at DESC`,
         [req.user.id]
       );
       orders = results;
@@ -138,29 +138,42 @@ router.get('/:id', verifyToken, canAccessOrderDetail, async (req, res) => {
   try {
     console.log('🔍 Lấy chi tiết đơn hàng ID:', orderId);
 
-    const [[order]] = await db.query('SELECT * FROM orders WHERE id = ?', [orderId]);
+    const [[order]] = await db.query(
+      `SELECT o.*, u.name as customer_name
+          FROM orders o
+          JOIN users u ON o.user_id = u.id
+          WHERE o.id = ?`,
+      [orderId]
+    );
     console.log('📄 Thông tin đơn hàng:', order);
 
     const [items] = await db.query(
-      `SELECT oi.*, p.name, p.image 
-       FROM order_items oi
-       JOIN products p ON oi.product_id = p.id
-       WHERE oi.order_id = ?`,
+      `SELECT oi.*, p.name, p.image
+          FROM order_items oi
+          JOIN products p ON oi.product_id = p.id
+          WHERE oi.order_id = ?`,
       [orderId]
     );
     console.log('📦 Danh sách sản phẩm trong đơn hàng:', items.length);
 
-    res.json({ order, items });
+    if (order) {
+      res.json({ order, items });
+    } else {
+      res.status(404).json({ msg: 'Không tìm thấy đơn hàng' });
+    }
+
   } catch (err) {
     console.error('❌ Lỗi khi lấy chi tiết đơn hàng:', err);
     res.status(500).json({ msg: 'Lỗi khi lấy chi tiết đơn hàng' });
   }
 });
 
-// 📌 Cập nhật trạng thái đơn hàng
+
+
+// 📌 Cập nhật trạng thái đơn hàng và bảng doanh thu
 router.put('/:id/status', verifyToken, async (req, res) => {
   const orderId = req.params.id;
-  const { status } = req.body;
+  const { status, payment_status } = req.body;
   const userId = req.user.id;
   const userRole = req.user.role;
 
@@ -168,58 +181,117 @@ router.put('/:id/status', verifyToken, async (req, res) => {
     console.log(`🔄 Cập nhật trạng thái đơn hàng ${orderId} thành "${status}"`);
 
     // Lấy thông tin đơn hàng
-    const [order] = await db.query('SELECT * FROM orders WHERE id = ?', [orderId]);
+    const [[order]] = await db.query('SELECT * FROM orders WHERE id = ?', [orderId]);
 
     if (!order) {
       return res.status(404).json({ msg: 'Đơn hàng không tồn tại' });
     }
 
+    // Tách month và year từ created_at
+    const createdAt = new Date(order.created_at);
+    const month = createdAt.getMonth() + 1;
+    const year = createdAt.getFullYear();
+
     // Nếu người dùng là admin hoặc seller của sản phẩm trong đơn hàng
     if (userRole === 'admin') {
-      // Admin có quyền cập nhật trạng thái tất cả đơn hàng
       console.log('✅ Admin cập nhật trạng thái đơn hàng');
     } else if (userRole === 'seller') {
       // Seller chỉ có thể cập nhật trạng thái đơn hàng của mình
-      const [orderItems] = await db.query('SELECT * FROM order_items WHERE order_id = ?', [orderId]);
+      const [orderItems] = await db.query(
+        'SELECT oi.*, p.seller_id FROM order_items oi JOIN products p ON oi.product_id = p.id WHERE oi.order_id = ?',
+        [orderId]
+      );
 
-      const isSellerProduct = orderItems.some(item => item.product_id && item.seller_id === userId);  // Kiểm tra seller là người bán sản phẩm trong đơn hàng
+      const isSellerProduct = orderItems.some(item => item.seller_id === userId);
 
       if (!isSellerProduct) {
         return res.status(403).json({ msg: 'Bạn không có quyền cập nhật trạng thái đơn hàng này' });
       }
     } else {
-      // Nếu không phải admin hoặc seller hợp lệ
       return res.status(403).json({ msg: 'Không có quyền' });
     }
 
-    // Nếu trạng thái mới là "canceled", hoàn lại stock cho từng sản phẩm
+    // Nếu trạng thái mới là "canceled", hoàn lại stock cho từng sản phẩm và cập nhật doanh thu
     if (status === 'canceled') {
-      console.log(`⛔ Đơn hàng ${orderId} bị hủy, hoàn lại kho hàng`);
+      console.log(`⛔ Đơn hàng ${orderId} bị hủy, hoàn lại kho hàng và doanh thu`);
 
       // Lấy danh sách các sản phẩm trong đơn hàng
       const [orderItems] = await db.query(
-        'SELECT oi.product_id, oi.quantity FROM order_items oi WHERE oi.order_id = ?',
+        'SELECT oi.product_id, oi.quantity, oi.price, p.seller_id FROM order_items oi JOIN products p ON oi.product_id = p.id WHERE oi.order_id = ?',
         [orderId]
       );
 
-      // Hoàn lại stock cho từng sản phẩm, đảm bảo stock không vượt quá 100
+      // Hoàn lại stock cho từng sản phẩm
       for (const item of orderItems) {
         const [[product]] = await db.query(
           'SELECT stock FROM products WHERE id = ?',
           [item.product_id]
         );
 
-        const newStock = Math.min(100, product.stock + item.quantity); // Đảm bảo stock không vượt quá 100
+        const newStock = Math.min(100, product.stock + item.quantity);
         await db.query(
           'UPDATE products SET stock = ? WHERE id = ?',
           [newStock, item.product_id]
         );
         console.log(`🔄 Đã hoàn lại ${item.quantity} sản phẩm ID ${item.product_id} vào kho, stock hiện tại: ${newStock}`);
       }
+
+      // Cập nhật doanh thu cho seller: Trừ đi doanh thu
+      for (const item of orderItems) {
+        const revenue = item.quantity * item.price;
+        await db.query(
+          'UPDATE revenue_tracking SET total_revenue = total_revenue - ? WHERE seller_id = ? AND month = ? AND year = ?',
+          [revenue, item.seller_id, month, year]
+        );
+        console.log(`🔄 Đã trừ ${revenue} doanh thu của seller ID ${item.seller_id}`);
+      }
     }
 
     // Cập nhật trạng thái đơn hàng
     await db.query('UPDATE orders SET status = ? WHERE id = ?', [status, orderId]);
+
+    // Nếu gửi kèm paymentStatus thì cập nhật luôn
+    if (payment_status) {
+      console.log(`🔄 Cập nhật trạng thái thanh toán của đơn hàng ${orderId} thành "${payment_status}"`);
+      await db.query('UPDATE orders SET payment_status = ? WHERE id = ?', [payment_status, orderId]);
+      console.log(`✅ Đã cập nhật payment_status của đơn hàng ${orderId} thành "${payment_status}"`);
+    }
+
+    // Nếu trạng thái là "paid", xử lý cập nhật doanh thu
+    if (status === 'completed' && payment_status === 'paid') {
+      console.log(`✅ Đơn hàng ${orderId} đã thanh toán thành công, cập nhật doanh thu`);
+
+      const [orderItems] = await db.query(
+        'SELECT oi.*, p.seller_id FROM order_items oi JOIN products p ON oi.product_id = p.id WHERE oi.order_id = ?',
+        [orderId]
+      );
+
+      for (const item of orderItems) {
+        const revenue = item.quantity * item.price;
+        console.log(`🔄 Doanh thu tính cho sản phẩm ID ${item.product_id}: ${revenue}`);
+      
+        const [existingRevenue] = await db.query(
+          'SELECT total_revenue FROM revenue_tracking WHERE seller_id = ? AND month = ? AND year = ?',
+          [item.seller_id, month, year]
+        );
+      
+        console.log('Kết quả truy vấn existingRevenue:', existingRevenue);
+      
+        if (existingRevenue.length > 0) {
+          await db.query(
+            'UPDATE revenue_tracking SET total_revenue = total_revenue + ? WHERE seller_id = ? AND month = ? AND year = ?',
+            [revenue, item.seller_id, month, year]
+          );
+          console.log(`🔄 Cập nhật doanh thu thêm ${revenue} cho seller ID ${item.seller_id}`);
+        } else {
+          await db.query(
+            'INSERT INTO revenue_tracking (seller_id, month, year, total_revenue, created_at) VALUES (?, ?, ?, ?, NOW())',
+            [item.seller_id, month, year, revenue]
+          );
+          console.log(`🔄 Đã thêm mới doanh thu ${revenue} cho seller ID ${item.seller_id}`);
+        }
+      }
+    }
 
     res.json({ msg: 'Cập nhật trạng thái thành công' });
   } catch (err) {
@@ -227,6 +299,8 @@ router.put('/:id/status', verifyToken, async (req, res) => {
     res.status(500).json({ msg: 'Lỗi khi cập nhật trạng thái' });
   }
 });
+
+
 
 
 module.exports = router;

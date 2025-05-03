@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const pool = require('./config/db'); // import kết nối mysql
+const path = require('path');
 // Test kết nối DB
 pool.getConnection()
   .then(conn => {
@@ -40,6 +41,10 @@ app.use('/api/revenues', revenueRoutes);
 const categoryRoutes = require('./routes/categoryRoutes');
 app.use('/api/categories', categoryRoutes);
 // ...
+//html
+app.get('/admin_duyetxacminh.html', (req, res) => {
+  res.sendFile(path.join(__dirname, 'admin_duyetxacminh.html'));
+});
 
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
