@@ -8,14 +8,7 @@ function isSelfOrAdmin(req, res, next) {
   }
 
   const userId = req.params.id;
-  
-//   // Kiểm tra định dạng ID (nếu dùng số)
-//   if (isNaN(userId) && typeof userId != 'string') {
-//       return res.status(400).json({ 
-//           error: 'Bad Request',
-//           message: 'ID không hợp lệ' 
-//       });
-//   }
+
 
   // Cho phép admin và seller truy cập mọi thứ
   if (req.user.role === 'admin' || req.user.role === 'seller') {

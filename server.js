@@ -40,6 +40,10 @@ const revenueRoutes = require('./routes/revenueRoutes');
 app.use('/api/revenues', revenueRoutes);
 const categoryRoutes = require('./routes/categoryRoutes');
 app.use('/api/categories', categoryRoutes);
+const favoriteRoutes = require('./routes/favoriteRoutes');
+app.use('/api/favorites', favoriteRoutes);
+const notificationRoutes = require('./routes/notificationRoutes');
+app.use('/api/notifications', notificationRoutes);
 // ...
 //html
 app.get('/admin_duyetxacminh.html', (req, res) => {
