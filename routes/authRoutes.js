@@ -55,7 +55,7 @@ router.post('/login', async (req, res) => {
             return res.status(400).json({ msg: 'Sai mật khẩu' });
         }
 
-        const token = jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '7d' });
+        const token = jwt.sign({ id: user.id, role: user.role, name: user.name }, process.env.JWT_SECRET, { expiresIn: '7d' });
         console.log(`Đăng nhập thành công: ${email}`);
         res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
     } catch (err) {
