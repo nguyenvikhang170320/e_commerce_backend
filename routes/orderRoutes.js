@@ -212,7 +212,9 @@ router.put('/:id/status', verifyToken, async (req, res) => {
     }
 
     // Nếu trạng thái mới là "canceled", hoàn lại stock cho từng sản phẩm và cập nhật doanh thu
-    if (status === 'cancelled' && payment_status=== 'failed') {
+
+
+    if (status === 'cancelled' && payment_status === 'failed') {
       console.log(`⛔ Đơn hàng ${orderId} bị hủy, hoàn lại kho hàng và doanh thu`);
 
       // Lấy danh sách các sản phẩm trong đơn hàng
@@ -269,14 +271,14 @@ router.put('/:id/status', verifyToken, async (req, res) => {
       for (const item of orderItems) {
         const revenue = item.quantity * item.price;
         console.log(`🔄 Doanh thu tính cho sản phẩm ID ${item.product_id}: ${revenue}`);
-      
+
         const [existingRevenue] = await db.query(
           'SELECT total_revenue FROM revenue_tracking WHERE seller_id = ? AND month = ? AND year = ?',
           [item.seller_id, month, year]
         );
-      
+
         console.log('Kết quả truy vấn existingRevenue:', existingRevenue);
-      
+
         if (existingRevenue.length > 0) {
           await db.query(
             'UPDATE revenue_tracking SET total_revenue = total_revenue + ? WHERE seller_id = ? AND month = ? AND year = ?',
