@@ -44,6 +44,10 @@ const favoriteRoutes = require('./routes/favoriteRoutes');
 app.use('/api/favorites', favoriteRoutes);
 const notificationRoutes = require('./routes/notificationRoutes');
 app.use('/api/notifications', notificationRoutes);
+const paymentRoutes = require('./routes/paymentRoutes');
+app.use('/api/payments', paymentRoutes);
+const chatRoutes = require('./routes/chatRoutes');
+app.use('/api/messages', chatRoutes);
 // ...
 //html
 app.get('/admin_duyetxacminh.html', (req, res) => {

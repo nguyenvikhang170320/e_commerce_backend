@@ -117,7 +117,7 @@ router.get('/top-products/:sellerId', async (req, res) => {
             top_products: rows
         });
     } catch (err) {
-        console.error(`[${new Date().toLocaleString()}] Error getting top products for sellerId ${sellerId}, month ${month || 'all'}, year ${year || 'all'}:`, err);
+        console.error(`[${new Date().toLocaleString()}] Lỗi khi lấy sản phẩm hàng đầu cho sellerId ${sellerId}, month ${month || 'all'}, year ${year || 'all'}:`, err);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -130,12 +130,12 @@ router.get('/revenue/:sellerId', async (req, res) => {
     console.log(`[${new Date().toLocaleString()}] Thực hiện truy vấn /revenue/${sellerId} with month: ${month}, year: ${year}`);
 
     if (!month || !year) {
-        console.log(`[${new Date().toLocaleString()}] Error: Missing 'month' or 'year' parameter for sellerId: ${sellerId}`);
+        console.log(`[${new Date().toLocaleString()}] Lỗi: Thiếu tham số 'tháng' hoặc 'năm' cho sellerId: ${sellerId}`);
         return res.status(400).json({ error: 'Missing month or year' });
     }
 
     try {
-        console.log(`[${new Date().toLocaleString()}] Executing query for monthly revenue of sellerId: ${sellerId}, month: ${month}, year: ${year}`);
+        console.log(`[${new Date().toLocaleString()}] Thực hiện truy vấn về doanh thu hàng tháng của sellerId: ${sellerId}, month: ${month}, year: ${year}`);
         const [rows] = await db.execute(
             `SELECT
                 p.seller_id,
@@ -155,7 +155,7 @@ router.get('/revenue/:sellerId', async (req, res) => {
         console.log(`[${new Date().toLocaleString()}] Doanh thu hàng tháng cho sellerId ${sellerId}, month ${month}, year ${year}: ${revenue}`);
         res.json({ sellerId, month, year, revenue });
     } catch (error) {
-        console.error(`[${new Date().toLocaleString()}] Error calculating monthly revenue for sellerId ${sellerId}, month ${month}, year ${year}:`, error);
+        console.error(`[${new Date().toLocaleString()}] Lỗi khi tính doanh thu hàng tháng cho sellerId ${sellerId}, month ${month}, year ${year}:`, error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

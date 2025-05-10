@@ -18,7 +18,7 @@ router.post('/', async (req, res) => {
             'INSERT INTO notifications (user_id, title, message, type) VALUES (?, ?, ?, ?)', // Loại bỏ extra_data
             [userId, title, message, type] // Loại bỏ extraData
         );
-        console.log('Notification created with ID:', result.insertId);
+        console.log('Thông báo được tạo bằng ID:', result.insertId);
 
         res.status(201).json({ id: result.insertId, message: 'Notification created' });
     } catch (err) {
@@ -64,19 +64,19 @@ router.get('/count', verifyToken, async (req, res) => {
     try {
         let rows;
         if (role === 'admin') {
-            console.log('Counting ALL unread notifications for admin');
+            console.log('Đếm TẤT CẢ các thông báo chưa đọc cho quản trị viên');
             [rows] = await db.execute(
                 'SELECT COUNT(*) AS unread_count FROM notifications WHERE status = "unread"'
             );
         } else {
-            console.log(`Counting unread notifications for user ${userId}`);
+            console.log(`Đếm thông báo chưa đọc cho người dùng ${userId}`);
             [rows] = await db.execute(
                 'SELECT COUNT(*) AS unread_count FROM notifications WHERE user_id = ? AND status = "unread"',
                 [userId]
             );
         }
 
-        console.log('Unread count result:', rows[0]);
+        console.log('Kết quả số lượng chưa đọc:', rows[0]);
         res.json({ unread_count: rows[0].unread_count }); // Trả về số lượng thông báo chưa đọc
     } catch (err) {
         console.error('Error counting notifications:', err);
@@ -100,14 +100,14 @@ router.put('/:id/read', verifyToken, async (req, res) => {
         );
 
         if (result.affectedRows === 0) {
-            console.log('No notification updated (not found or no permission)');
+            console.log('Không có thông báo nào được cập nhật (không tìm thấy hoặc không có quyền)');
             return res.status(404).json({ message: 'Notification not found or no permission' });
         }
 
-        console.log('Notification marked as read');
+        console.log('Thông báo được đánh dấu là đã đọc');
         res.json({ message: 'Notification marked as read' });
     } catch (err) {
-        console.error('Error marking notification as read:', err);
+        console.error('Lỗi khi đánh dấu thông báo là đã đọc:', err);
         res.status(500).json({ message: 'Server error' });
     }
 });
