@@ -55,7 +55,7 @@ router.post('/login', async (req, res) => {
             return res.status(400).json({ msg: 'Sai mật khẩu' });
         }
 
-        const token = jwt.sign({ id: user.id, role: user.role, name: user.name }, process.env.JWT_SECRET, { expiresIn: '7d' });
+        const token = jwt.sign({ id: user.id, role: user.role, name: user.name, email: user.email, image: user.image }, process.env.JWT_SECRET, { expiresIn: '7d' });
         console.log(`Đăng nhập thành công: ${email}`);
         res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
     } catch (err) {
@@ -392,7 +392,10 @@ router.get('/me', verifyToken, async (req, res) => {
             email: user.email,
             role: user.role,
             name: user.name,
+            image: user.image,
+            phone: user.phone,
         });
+
     } catch (err) {
         console.error(err);
         res.status(500).json({ msg: 'Lỗi máy chủ khi lấy thông tin người dùng' });
