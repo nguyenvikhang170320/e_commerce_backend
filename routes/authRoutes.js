@@ -8,6 +8,7 @@ const moment = require('moment'); // dùng để lấy thời gian hiện tại 
 const { verifyToken } = require('../utils/token'); // Cập nhật đúng path tới file token.js
 const cloudinary = require('../cloudinary');
 const multer = require('multer');
+const db = require('../config/db');
 
 // Set up multer storage (assuming you're using diskStorage)
 const storage = multer.diskStorage({});
@@ -400,6 +401,23 @@ router.get('/me', verifyToken, async (req, res) => {
         console.error(err);
         res.status(500).json({ msg: 'Lỗi máy chủ khi lấy thông tin người dùng' });
     }
+});
+
+// GET: Lấy tất cả người dùng trừ user đang đăng nhập
+router.get('/others', verifyToken, async (req, res) => {
+  const currentUserId = req.user.id;
+
+  try {
+    const [users] = await db.query(
+      'SELECT id, name, email, phone FROM users WHERE id != ?',
+      [currentUserId]
+    );
+
+    res.json(users);
+  } catch (error) {
+    console.error('❌ Lỗi khi lấy danh sách người dùng:', error);
+    res.status(500).json({ msg: 'Lỗi máy chủ' });
+  }
 });
 
 

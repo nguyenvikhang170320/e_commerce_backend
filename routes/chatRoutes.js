@@ -105,70 +105,66 @@ router.get('/', async (req, res) => {
     }
 });
 
-router.get('/conversations', async (req, res) => {
+router.get('/last-messages', async (req, res) => {
     const { userId } = req.query;
-    console.log('userId:', userId);
+
+    console.log('👉 Nhận request GET /messages/last-messages với userId:', userId);
 
     if (!userId) {
-        console.log('Thiếu userId');
+        console.log('❌ Thiếu userId trong query');
         return res.status(400).json({ message: 'Thiếu userId' });
     }
 
     try {
-        // Lấy danh sách người dùng khác user hiện tại (role: user, seller)
-        const [users] = await db.execute(
-            `
-            SELECT u.id AS user_id, u.name, u.image AS avatar
-            FROM users u
-            WHERE u.role IN ('user', 'seller') AND u.id != ?
-            `,
-            [userId]
-        );
-
-        console.log('Người dùng khác:', users);
-
-        if (users.length === 0) {
-            console.log('Không tìm thấy người dùng nào');
-            return res.json([]);
-        }
-
-        // Duyệt qua từng user để lấy tin nhắn cuối cùng
-        const conversations = await Promise.all(users.map(async (user) => {
-            const [lastMessageRows] = await db.execute(
-                `
-                SELECT content, created_at
+        const query = `
+            SELECT 
+                m1.id,
+                m1.sender_id,
+                m1.receiver_id,
+                m1.content,
+                m1.media_url,
+                m1.created_at,
+                u1.name AS sender_name,
+                u1.image AS sender_avatar,
+                u2.name AS receiver_name,
+                u2.image AS receiver_avatar,
+                CASE 
+                    WHEN m1.sender_id = ? THEN m1.receiver_id
+                    ELSE m1.sender_id
+                END AS other_user_id
+            FROM messages m1
+            INNER JOIN (
+                SELECT 
+                    LEAST(sender_id, receiver_id) AS user_min,
+                    GREATEST(sender_id, receiver_id) AS user_max,
+                    MAX(created_at) AS max_created
                 FROM messages
-                WHERE 
-                    (sender_id = ? AND receiver_id = ?) 
-                    OR 
-                    (sender_id = ? AND receiver_id = ?)
-                ORDER BY created_at DESC
-                LIMIT 1
-                `,
-                [userId, user.user_id, user.user_id, userId]
-            );
+                WHERE sender_id = ? OR receiver_id = ?
+                GROUP BY user_min, user_max
+            ) m2 ON (
+                LEAST(m1.sender_id, m1.receiver_id) = m2.user_min AND
+                GREATEST(m1.sender_id, m1.receiver_id) = m2.user_max AND
+                m1.created_at = m2.max_created
+            )
+            JOIN users u1 ON m1.sender_id = u1.id
+            JOIN users u2 ON m1.receiver_id = u2.id
+            ORDER BY m1.created_at DESC
+        `;
 
-            const lastMessage = lastMessageRows[0];
+        console.log('📥 Thực hiện truy vấn SQL với userId:', userId);
 
-            console.log(`Tin nhắn cuối cho user ${user.user_id}:`, lastMessage);
+        const [rows] = await db.execute(query, [userId, userId, userId]);
 
-            return {
-                user_id: user.user_id,
-                name: user.name,
-                avatar: user.avatar,
-                last_message: lastMessage ? lastMessage.content : '',
-                last_message_time: lastMessage ? lastMessage.created_at : null,
-            };
-        }));
+        console.log('✅ Kết quả truy vấn:', rows.length, 'tin nhắn được trả về');
+        console.log(rows);
 
-        console.log('Danh sách conversation:', conversations);
-        res.json(conversations);
-
+        res.json(rows);
     } catch (err) {
-        console.error("GET /conversations - Lỗi:", err);
-        res.status(500).json({ message: 'Server error' });
+        console.error('❌ Lỗi khi lấy tin nhắn cuối:', err);
+        res.status(500).json({ message: 'Lỗi server' });
     }
 });
+
 
 
 module.exports = router;

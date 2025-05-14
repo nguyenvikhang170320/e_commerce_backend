@@ -4,10 +4,11 @@ const db = require('../config/db');
 const { verifyToken } = require('../utils/token');
 const { canAccessOrderDetail } = require('../middleware/order_permission');
 
+
 // 📌 Tạo đơn hàng từ giỏ hàng
 router.post('/', verifyToken, async (req, res) => {
   const userId = req.user.id;
-  const { address, phone } = req.body;
+  const { address, phone} = req.body;
 
   try {
     console.log('➡️ Bắt đầu tạo đơn hàng cho user:', userId);
@@ -40,7 +41,7 @@ router.post('/', verifyToken, async (req, res) => {
 
     const [orderResult] = await db.query(
       'INSERT INTO orders (user_id, address, phone, total_amount, status, created_at) VALUES (?, ?, ?, ?, "pending", NOW())',
-      [userId, address, phone, total]
+      [userId, address, phone, total, lat, lng]
     );
     const orderId = orderResult.insertId;
     console.log('🧾 Đã tạo đơn hàng, ID:', orderId);
