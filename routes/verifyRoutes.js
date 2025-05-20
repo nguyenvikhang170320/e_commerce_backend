@@ -89,4 +89,29 @@ router.put('/:id/reject', verifyToken, isAdmin , async (req, res) => {
   }
 });
 
+
+router.get('/me', verifyToken, async (req, res) => {
+  const userId = req.user.id; // hoặc req.userId tùy middleware của bạn
+
+  try {
+    const [userRows] = await db.execute(`
+      SELECT u.id, u.name, u.email, u.phone, u.role,
+             (SELECT status FROM verification_requests WHERE user_id = u.id ORDER BY created_at DESC LIMIT 1) AS verification_status
+      FROM users u
+      WHERE u.id = ?
+    `, [userId]);
+
+    if (userRows.length === 0) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    return res.json(userRows[0]);
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: 'Server error' });
+  }
+});
+
+
+
 module.exports = router;

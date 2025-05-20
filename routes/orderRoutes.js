@@ -41,7 +41,7 @@ router.post('/', verifyToken, async (req, res) => {
 
     const [orderResult] = await db.query(
       'INSERT INTO orders (user_id, address, phone, total_amount, status, created_at) VALUES (?, ?, ?, ?, "pending", NOW())',
-      [userId, address, phone, total, lat, lng]
+      [userId, address, phone, total]
     );
     const orderId = orderResult.insertId;
     console.log('🧾 Đã tạo đơn hàng, ID:', orderId);

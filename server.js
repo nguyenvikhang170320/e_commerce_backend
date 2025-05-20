@@ -50,6 +50,10 @@ const chatRoutes = require('./routes/chatRoutes');
 app.use('/api/messages', chatRoutes);
 const mapRoutes = require('./routes/mapRoutes');
 app.use('/api/maps', mapRoutes);
+// const vnpayRouter = require('./routes/vnpay');
+// app.use('/api/vnpay', vnpayRouter);
+const vnpayreturnRouter = require('./routes/vnpay_return');
+app.use('/api/vnpay', vnpayreturnRouter);
 
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);

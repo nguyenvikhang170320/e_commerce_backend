@@ -409,7 +409,7 @@ router.get('/others', verifyToken, async (req, res) => {
 
   try {
     const [users] = await db.query(
-      'SELECT id, name, email, phone FROM users WHERE id != ?',
+      'SELECT id, name, email, phone,image FROM users WHERE id != ?',
       [currentUserId]
     );
 
