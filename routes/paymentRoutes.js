@@ -1,117 +1,65 @@
+// routes/vnpay.js
 const express = require('express');
+const crypto = require('crypto');
+const moment = require('moment');
+const qs = require('qs');
 const router = express.Router();
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
-const db = require('../config/db');
 
+router.post('/create_payment_url', (req, res) => {
+  const { amount, orderId, orderInfo } = req.body;
 
-// Create Stripe Checkout Session (Thanh toán điện tử)
-router.post('/create-checkout-session', async (req, res) => {
-  const { cartItems, userId, orderId } = req.body;
+  const vnp_TmnCode = 'Q0M7T1CP';
+  const vnp_HashSecret = 'RI8KHMFLSAE0CB49HIQ0YXEMYOKH8XB3';
+  const vnp_Url = 'https://sandbox.vnpayment.vn/paymentv2/vpcpay.html';
+  const returnUrl = 'https://localhost:5000/api/vnpay/vnpay_return';
 
-  try {
-    const lineItems = cartItems.map(item => ({
-      price_data: {
-        currency: 'vnd',
-        product_data: {
-          name: item.name,
-        },
-        unit_amount: Math.round(item.price), // VND: số nguyên
-      },
-      quantity: item.quantity,
-    }));
+  let createDate = moment().format('YYYYMMDDHHmmss');
+  let orderIdGen = moment().format('HHmmss');
 
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ['card'],
-      line_items: lineItems,
-      mode: 'payment',
-      success_url: `http://localhost:3000/success?session_id={CHECKOUT_SESSION_ID}&order_id=${orderId}`,
-      cancel_url: 'http://localhost:3000/cancel',
-      metadata: {
-        userId: userId,
-        orderId: orderId,
-      },
-    });
+  let ipAddr = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+  console.log("Client IP Address:", ipAddr); // Log the IP address
 
-    console.log('✅ Tạo session Stripe thành công:', session.id);
+  let vnp_Params = {
+    vnp_Version: '2.1.0',
+    vnp_Command: 'pay',
+    vnp_TmnCode: vnp_TmnCode,
+    vnp_Locale: 'vn',
+    vnp_CurrCode: 'VND',
+    vnp_TxnRef: orderId || orderIdGen,
+    vnp_OrderInfo: orderInfo || 'Thanh toan don hang',
+    vnp_OrderType: 'other',
+    vnp_Amount: amount * 100, // nhân 100 theo yêu cầu của VNPAY
+    vnp_ReturnUrl: returnUrl,
+    vnp_IpAddr: ipAddr,
+    vnp_CreateDate: createDate,
+  };
 
+  console.log("Initial vnp_Params:", vnp_Params); // Log initial parameters
 
-    // ✅ CHỈ cập nhật stripe_session_id, KHÔNG update paid/completed ngay
-    await db.query(
-      'UPDATE orders SET stripe_session_id = ? WHERE id = ?',
-      [session.id, orderId]
-    );
+  vnp_Params = sortObject(vnp_Params);
+  let signData = qs.stringify(vnp_Params, { encode: true });
+  console.log("Sorted, Stringified Data (before hash):", signData); // Log stringified data
 
-    console.log(`✅ Đã cập nhật đơn hàng ${orderId}: payment_status = "paid", status = "completed", stripe_session_id = ${session.id}`);
+  let hmac = crypto.createHmac('sha512', vnp_HashSecret);
+  let signed = hmac.update(new Buffer.from(signData, 'utf-8')).digest('hex');
+  console.log("Generated Signature:", signed); // Log the generated signature
 
-    res.json({ id: session.id });
-  } catch (err) {
-    console.error('❌ Stripe error:', err);
-    res.status(500).json({ error: 'Stripe session failed' });
-  }
+  vnp_Params['vnp_SecureHash'] = signed;
+  let paymentUrl = vnp_Url + '?' + qs.stringify(vnp_Params, { encode: true });
+
+  console.log("Final vnp_Params (with signature):", vnp_Params);  // Log the final parameters
+  console.log("Payment URL:", paymentUrl); // Log the complete payment URL
+
+  res.json({ paymentUrl });
 });
 
-// routes/paymentRoutes.js (thêm webhook)
-
-router.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
-  const sig = req.headers['stripe-signature'];
-
-  let event;
-
-  try {
-    event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
-  } catch (err) {
-    console.error('⚠️ Webhook signature verification failed.', err.message);
-    return res.status(400).send(`Webhook Error: ${err.message}`);
+function sortObject(obj) {
+  let sorted = {};
+  let keys = Object.keys(obj).sort();
+  for (let key of keys) {
+    sorted[key] = obj[key];
   }
-
-  // Xử lý event
-  if (event.type === 'checkout.session.completed') {
-    const session = event.data.object;
-
-    const orderId = session.metadata.orderId;
-
-    console.log(`✅ Thanh toán Stripe thành công cho order ID: ${orderId}`);
-
-    // Cập nhật orders: paid + completed
-    await db.query(
-      'UPDATE orders SET payment_status = ?, status = ? WHERE id = ?',
-      ['paid', 'completed', orderId]
-    );
-
-    // Lấy thông tin đơn để cập nhật doanh thu
-    const [orderItems] = await db.query(
-      'SELECT oi.*, p.seller_id FROM order_items oi JOIN products p ON oi.product_id = p.id WHERE oi.order_id = ?',
-      [orderId]
-    );
-
-    const now = new Date();
-    const month = now.getMonth() + 1;
-    const year = now.getFullYear();
-
-    for (const item of orderItems) {
-      const revenue = item.quantity * item.price;
-      const [existingRevenue] = await db.query(
-        'SELECT total_revenue FROM revenue_tracking WHERE seller_id = ? AND month = ? AND year = ?',
-        [item.seller_id, month, year]
-      );
-
-      if (existingRevenue.length > 0) {
-        await db.query(
-          'UPDATE revenue_tracking SET total_revenue = total_revenue + ? WHERE seller_id = ? AND month = ? AND year = ?',
-          [revenue, item.seller_id, month, year]
-        );
-      } else {
-        await db.query(
-          'INSERT INTO revenue_tracking (seller_id, month, year, total_revenue, created_at) VALUES (?, ?, ?, ?, NOW())',
-          [item.seller_id, month, year, revenue]
-        );
-      }
-    }
-  }
-
-  res.json({ received: true });
-});
-
-
+  return sorted;
+}
 
 module.exports = router;
