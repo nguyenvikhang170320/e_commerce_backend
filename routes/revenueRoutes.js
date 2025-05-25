@@ -1,9 +1,11 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../config/db');
+const { verifyToken } = require('../utils/token');
+const isSelfOrAdmin = require('../middleware/role_admin_seller');
 
 // 1. Tổng doanh thu trong năm theo seller
-router.get('/yearly/:sellerId', async (req, res) => {
+router.get('/yearly/:sellerId',verifyToken, isSelfOrAdmin, async (req, res) => {
     const sellerId = req.params.sellerId;
     const { year } = req.query;
 
@@ -24,12 +26,13 @@ router.get('/yearly/:sellerId', async (req, res) => {
             JOIN orders o ON oi.order_id = o.id
             WHERE p.seller_id = ?
               AND o.payment_status = 'paid'
+              AND o.status ='completed'
               AND YEAR(o.created_at) = ?`,
             [sellerId, year]
         );
 
         const revenue = rows[0]?.total_revenue || 0;
-        console.log(`[${new Date().toLocaleString()}] Yearly revenue for sellerId ${sellerId}, year ${year}: ${revenue}`);
+        console.log(`[${new Date().toLocaleString()}] Doanh thu hàng năm cho người bán ID ${sellerId}, year ${year}: ${revenue}`);
         res.json({ sellerId, year, revenue });
     } catch (err) {
         console.error(`[${new Date().toLocaleString()}] Error getting yearly revenue for sellerId ${sellerId}, year ${year}:`, err);
@@ -38,7 +41,7 @@ router.get('/yearly/:sellerId', async (req, res) => {
 });
 
 // 2. Số đơn hàng đã thanh toán trong tháng
-router.get('/orders-count/:sellerId', async (req, res) => {
+router.get('/orders-count/:sellerId',verifyToken,isSelfOrAdmin, async (req, res) => {
     const sellerId = req.params.sellerId;
     const { month, year } = req.query;
 
@@ -58,6 +61,7 @@ router.get('/orders-count/:sellerId', async (req, res) => {
             JOIN products p ON oi.product_id = p.id
             WHERE p.seller_id = ?
               AND o.payment_status = 'paid'
+              AND o.status ='completed'
               AND MONTH(o.created_at) = ?
               AND YEAR(o.created_at) = ?`,
             [sellerId, month, year]
@@ -78,7 +82,7 @@ router.get('/orders-count/:sellerId', async (req, res) => {
 });
 
 // 3. Top sản phẩm bán chạy (top 5)
-router.get('/top-products/:sellerId', async (req, res) => {
+router.get('/top-products/:sellerId',verifyToken,isSelfOrAdmin, async (req, res) => {
     const sellerId = req.params.sellerId;
     const { month, year } = req.query;
 
@@ -86,7 +90,8 @@ router.get('/top-products/:sellerId', async (req, res) => {
 
     try {
         const queryParams = [sellerId];
-        let whereClause = `WHERE p.seller_id = ? AND o.payment_status = 'paid'`;
+        let whereClause = `WHERE p.seller_id = ? AND o.payment_status = 'paid'
+        AND o.status ='completed'`;
 
         if (month && year) {
             whereClause += ` AND MONTH(o.created_at) = ? AND YEAR(o.created_at) = ?`;
@@ -123,7 +128,7 @@ router.get('/top-products/:sellerId', async (req, res) => {
 });
 
 // 4. Doanh thu theo tháng (cụ thể)
-router.get('/revenue/:sellerId', async (req, res) => {
+router.get('/revenue/:sellerId',verifyToken,isSelfOrAdmin, async (req, res) => {
     const sellerId = req.params.sellerId;
     const { month, year } = req.query;
 
@@ -145,6 +150,7 @@ router.get('/revenue/:sellerId', async (req, res) => {
             JOIN orders o ON oi.order_id = o.id
             WHERE p.seller_id = ?
               AND o.payment_status = 'paid'
+              AND o.status ='completed'
               AND MONTH(o.created_at) = ?
               AND YEAR(o.created_at) = ?
             GROUP BY p.seller_id`,

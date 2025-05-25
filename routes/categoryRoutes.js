@@ -2,8 +2,8 @@ const express = require('express');
 const router = express.Router();
 const db = require('../config/db'); // dùng mysql2, đã cấu hình kết nối DB
 const { verifyToken } = require('../utils/token');
-const { isSelfOrAdmin } = require('../middleware/role_admin_seller');  // Đảm bảo đã import isSelfOrAdmin middleware
-
+const isSelfOrAdmin  = require('../middleware/role_admin_seller');  // Đảm bảo đã import isSelfOrAdmin middleware
+const denyAdmin = require('../middleware/deny_admin');
 // GET tất cả danh mục
 router.get('/', async (req, res) => {
   try {
@@ -15,7 +15,7 @@ router.get('/', async (req, res) => {
 });
 
 // POST tạo danh mục mới
-router.post('/', verifyToken, isSelfOrAdmin, async (req, res) => {  // Sử dụng isSelfOrAdmin để kiểm tra quyền
+router.post('/', verifyToken, denyAdmin, async (req, res) => {  // Sử dụng isSelfOrAdmin để kiểm tra quyền
   
   const { name, description } = req.body;
   try {

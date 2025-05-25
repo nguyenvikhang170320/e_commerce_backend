@@ -2,16 +2,16 @@ const express = require('express');
 const router = express.Router();
 const db = require('../config/db');
 const { verifyToken } = require('../utils/token');
-const { isSelfOrAdmin } = require('../middleware/role_admin_seller');
+const denyAdmin = require('../middleware/deny_admin');
 
 // 📌 Lấy tất cả sản phẩm trong giỏ của user
-router.get('/', verifyToken, async (req, res) => {
+router.get('/', verifyToken,denyAdmin, async (req, res) => {
   const userId = req.user.id;
   console.log(`[${new Date().toISOString()}] Yêu cầu lấy giỏ hàng từ user ID: ${userId}`);
 
   try {
     const [cartItems] = await db.query(
-      `SELECT c.id, c.product_id, c.quantity, p.name, p.price, p.image, c.added_at
+      `SELECT c.id, c.product_id, c.quantity, c.price , p.name, p.image, c.added_at
        FROM carts c
        JOIN products p ON c.product_id = p.id
        WHERE c.user_id = ?`,
@@ -29,13 +29,17 @@ router.get('/', verifyToken, async (req, res) => {
 });
 
 // Thêm giỏ hàng
-router.post('/', verifyToken, async (req, res) => {
+router.post('/', verifyToken, denyAdmin, async (req, res) => {
   const userId = req.user.id;
-  const { product_id, quantity } = req.body;
+  const { product_id, quantity,discountPercent, shipping_fee, price} = req.body;
 
   console.log('🟡 Người dùng ID:', userId);
   console.log('🟡 Sản phẩm thêm vào:', product_id);
+  console.log('🟡 Giá sản phẩm:', price);
   console.log('🟡 Số lượng yêu cầu:', quantity);
+  console.log('🟡 Giảm giá:', discountPercent);
+  console.log('🟡 Phí ship:', shipping_fee);
+
 
   if (!product_id) {
     console.log('❌ Thiếu product_id');
@@ -78,9 +82,11 @@ router.post('/', verifyToken, async (req, res) => {
 
     // 4️⃣ Thêm mới vào giỏ hàng (dù trùng sản phẩm cũng tạo mới)
     console.log('🆕 Thêm mới sản phẩm vào giỏ...');
+    const discount = discountPercent ?? 0;
+    const shipping = shipping_fee ?? 0;
     await conn.query(
-      'INSERT INTO carts (user_id, product_id, quantity, image) VALUES (?, ?, ?, ?)',
-      [userId, product_id, quantityToSet, product.image]
+      'INSERT INTO carts (user_id, product_id, quantity, image,discountPercent,shipping_fee,price) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [userId, product_id, quantityToSet, product.image, discount, shipping, price]
     );
     console.log('✅ Đã thêm mới sản phẩm vào giỏ');
 
@@ -115,7 +121,7 @@ router.post('/', verifyToken, async (req, res) => {
 
 
 // 📌 Cập nhật số lượng sản phẩm trong giỏ
-router.put('/:id', verifyToken, async (req, res) => {
+router.put('/:id', verifyToken,denyAdmin, async (req, res) => {
   const cartId = req.params.id;
   const { quantity } = req.body;
 
@@ -149,7 +155,7 @@ router.put('/:id', verifyToken, async (req, res) => {
 
 
 // 📌 Xóa sản phẩm khỏi giỏ hàng
-router.delete('/:id', verifyToken, async (req, res) => {
+router.delete('/:id', verifyToken,denyAdmin, async (req, res) => {
   const cartId = req.params.id;
   const userId = req.user.id;
   const userRole = req.user.role; // Lấy role từ token

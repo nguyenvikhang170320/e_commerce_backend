@@ -8,13 +8,13 @@ const { canAccessOrderDetail } = require('../middleware/order_permission');
 // 📌 Tạo đơn hàng từ giỏ hàng
 router.post('/', verifyToken, async (req, res) => {
   const userId = req.user.id;
-  const { address, phone} = req.body;
+  const { address, phone } = req.body;
 
   try {
     console.log('➡️ Bắt đầu tạo đơn hàng cho user:', userId);
 
     const [cartItems] = await db.query(
-      `SELECT c.product_id, c.quantity, p.price, p.stock
+      `SELECT c.product_id, c.quantity, c.price, p.stock
        FROM carts c
        JOIN products p ON c.product_id = p.id
        WHERE c.user_id = ?`,
@@ -68,7 +68,7 @@ router.post('/', verifyToken, async (req, res) => {
     await db.query('DELETE FROM carts WHERE user_id = ?', [userId]);
     console.log('🧹 Đã xóa giỏ hàng sau khi đặt hàng');
 
-    res.status(201).json({ msg: 'Đặt hàng thành công', order_id: orderId });
+    res.status(201).json({ msg: 'Đặt hàng thành công', orderId: orderId });
   } catch (err) {
     console.error('❌ Lỗi khi tạo đơn hàng:', err);
     res.status(500).json({ msg: 'Lỗi khi tạo đơn hàng' });
@@ -76,7 +76,7 @@ router.post('/', verifyToken, async (req, res) => {
 });
 
 
-// 📌 Lấy đơn hàng của người dùng
+// 📌 Lấy đơn hàng của người dùng user
 router.get('/', verifyToken, async (req, res) => {
   const userId = req.user.id;
 
@@ -238,7 +238,6 @@ router.put('/:id/status', verifyToken, async (req, res) => {
         );
         console.log(`🔄 Đã hoàn lại ${item.quantity} sản phẩm ID ${item.product_id} vào kho, stock hiện tại: ${newStock}`);
       }
-
       // Cập nhật doanh thu cho seller: Trừ đi doanh thu
       for (const item of orderItems) {
         const revenue = item.quantity * item.price;
@@ -248,7 +247,10 @@ router.put('/:id/status', verifyToken, async (req, res) => {
         );
         console.log(`🔄 Đã trừ ${revenue} doanh thu của seller ID ${item.seller_id}`);
       }
+
     }
+
+
 
     // Cập nhật trạng thái đơn hàng
     await db.query('UPDATE orders SET status = ? WHERE id = ?', [status, orderId]);
@@ -259,42 +261,73 @@ router.put('/:id/status', verifyToken, async (req, res) => {
       await db.query('UPDATE orders SET payment_status = ? WHERE id = ?', [payment_status, orderId]);
       console.log(`✅ Đã cập nhật payment_status của đơn hàng ${orderId} thành "${payment_status}"`);
     }
-
+    const [orderCheck] = await db.query(
+      'SELECT revenue_tracked FROM orders WHERE id = ?',
+      [orderId]
+    );
     // Nếu trạng thái thanh toán là "paid" và trạng thái đơn hàng "completed", xử lý cập nhật doanh thu
-    if (status === 'completed' || payment_status === 'paid') {
-      console.log(`✅ Đơn hàng ${orderId} đã thanh toán thành công, cập nhật doanh thu`);
+    // Nếu đơn hàng đã thanh toán và đã hoàn tất nhưng chưa cập nhật doanh thu
+    if (status === 'completed' && payment_status === 'paid' && orderCheck[0]?.revenue_tracked === 0) {
+      console.log(`✅ Đơn hàng ${orderId} đã thanh toán và hoàn tất. Bắt đầu cập nhật doanh thu.`);
+      if (orderCheck[0]?.revenue_tracked === 1) {
+        console.log(`⚠️ Doanh thu cho đơn hàng ${orderId} đã được cập nhật trước đó, không thực hiện lại.`);
+      }
 
       const [orderItems] = await db.query(
-        'SELECT oi.*, p.seller_id FROM order_items oi JOIN products p ON oi.product_id = p.id WHERE oi.order_id = ?',
+        `SELECT 
+       oi.*, 
+       p.seller_id 
+     FROM order_items oi 
+     JOIN products p ON oi.product_id = p.id 
+     WHERE oi.order_id = ?`,
         [orderId]
       );
 
-      for (const item of orderItems) {
-        const revenue = item.quantity * item.price;
-        console.log(`🔄 Doanh thu tính cho sản phẩm ID ${item.product_id}: ${revenue}`);
+      const sellerRevenueMap = {};
 
+      for (const item of orderItems) {
+        const revenue = item.price * item.quantity;
+
+        if (!sellerRevenueMap[item.seller_id]) {
+          sellerRevenueMap[item.seller_id] = 0;
+        }
+
+        sellerRevenueMap[item.seller_id] += revenue;
+      }
+
+      for (const [sellerId, revenue] of Object.entries(sellerRevenueMap)) {
         const [existingRevenue] = await db.query(
           'SELECT total_revenue FROM revenue_tracking WHERE seller_id = ? AND month = ? AND year = ?',
-          [item.seller_id, month, year]
+          [sellerId, month, year]
         );
-
-        console.log('Kết quả truy vấn existingRevenue:', existingRevenue);
 
         if (existingRevenue.length > 0) {
           await db.query(
             'UPDATE revenue_tracking SET total_revenue = total_revenue + ? WHERE seller_id = ? AND month = ? AND year = ?',
-            [revenue, item.seller_id, month, year]
+            [revenue, sellerId, month, year]
           );
-          console.log(`🔄 Cập nhật doanh thu thêm ${revenue} cho seller ID ${item.seller_id}`);
+          console.log(`🔄 Cập nhật doanh thu thêm ${revenue} cho seller ID ${sellerId}`);
         } else {
           await db.query(
             'INSERT INTO revenue_tracking (seller_id, month, year, total_revenue, created_at) VALUES (?, ?, ?, ?, NOW())',
-            [item.seller_id, month, year, revenue]
+            [sellerId, month, year, revenue]
           );
-          console.log(`🔄 Đã thêm mới doanh thu ${revenue} cho seller ID ${item.seller_id}`);
+          console.log(`🆕 Thêm mới doanh thu ${revenue} cho seller ID ${sellerId}`);
         }
       }
+
+      // Cập nhật lại orders.revenue_tracked = 1
+      await db.query(
+        'UPDATE orders SET revenue_tracked = 1 WHERE id = ?',
+        [orderId]
+      );
+
+      console.log(`✅ Đã đánh dấu đơn hàng ${orderId} đã cập nhật doanh thu.`);
+
+    } else if (orderCheck[0]?.revenue_tracked === 1) {
+      console.log(`⚠️ Đơn hàng ${orderId} đã được cập nhật doanh thu trước đó. Không cập nhật lại.`);
     }
+
 
     res.json({ msg: 'Cập nhật trạng thái thành công' });
   } catch (err) {
@@ -302,8 +335,5 @@ router.put('/:id/status', verifyToken, async (req, res) => {
     res.status(500).json({ msg: 'Lỗi khi cập nhật trạng thái' });
   }
 });
-
-
-
 
 module.exports = router;

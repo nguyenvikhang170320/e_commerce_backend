@@ -2,10 +2,11 @@ const express = require('express');
 const router = express.Router();
 const db = require('../config/db');
 const { verifyToken } = require('../utils/token');
-const { isSelfOrAdmin } = require('../middleware/role_admin_seller');  // Đảm bảo đã import isSelfOrAdmin middleware
+const isSelfOrAdmin  = require('../middleware/role_admin_seller');
+const denyAdmin  = require('../middleware/deny_admin');  
 
 // 📌 Tạo sản phẩm mới
-router.post('/', verifyToken, isSelfOrAdmin, async (req, res) => {
+router.post('/', verifyToken, denyAdmin, async (req, res) => {
   const { name, description = '', price, image = '', category_id, stock = 0 } = req.body; // ✅ Lấy thêm trường stock và đặt giá trị mặc định là 0
   const seller_id = req.user.id;
 
