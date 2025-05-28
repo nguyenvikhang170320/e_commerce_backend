@@ -5,6 +5,37 @@ const { verifyToken } = require('../utils/token');
 const isSelfOrAdmin  = require('../middleware/role_admin_seller');
 const denyAdmin  = require('../middleware/deny_admin');  
 
+// Tìm kiếm sản phẩm theo tên
+router.get('/search', async (req, res) => {
+    const searchTerm = req.query.q; // Lấy từ khóa tìm kiếm từ query parameter 'q'
+
+    if (!searchTerm) {
+        return res.status(400).json({ message: 'Search term (q) is required' });
+    }
+
+    try {
+        // Sử dụng LIKE để tìm kiếm gần đúng và CONCAT để thêm dấu %
+        // Sử dụng LOWER() để tìm kiếm không phân biệt chữ hoa/chữ thường
+        const [rows] = await db.execute(
+            `SELECT p.*, c.name AS category_name, u.name AS seller_name
+             FROM products p
+             JOIN categories c ON p.category_id = c.id
+             JOIN users u ON p.seller_id = u.id
+             WHERE LOWER(p.name) LIKE ?`,
+            [`%${searchTerm.toLowerCase()}%`] // Chuyển đổi searchTerm sang chữ thường
+        );
+
+        if (rows.length === 0) {
+            return res.status(200).json({ message: 'No products found matching the search term.', products: [] });
+        }
+
+        res.status(200).json(rows);
+    } catch (error) {
+        console.error('Error searching products:', error);
+        res.status(500).json({ message: 'Failed to search products', error: error.message });
+    }
+});
+
 // 📌 Tạo sản phẩm mới
 router.post('/', verifyToken, denyAdmin, async (req, res) => {
   const { name, description = '', price, image = '', category_id, stock = 0 } = req.body; // ✅ Lấy thêm trường stock và đặt giá trị mặc định là 0
@@ -28,10 +59,9 @@ router.post('/', verifyToken, denyAdmin, async (req, res) => {
   }
 });
 
-
-// 📌 Lấy danh sách sản phẩm theo categoryId
-router.get('/category', async (req, res) => {
-  const categoryId = req.query.category_id || req.query.categoryId;
+//lấy sản phẩm theo categoryId
+router.get('/category/:categoryId', async (req, res) => {
+  const categoryId = req.params.categoryId;
 
   if (!categoryId) {
     return res.status(400).json({ msg: 'Category ID is required' });
@@ -53,6 +83,7 @@ router.get('/category', async (req, res) => {
     res.status(500).json({ msg: 'Server error when fetching products' });
   }
 });
+
 
 
 // 📌 Lấy danh sách sản phẩm nổi bật
@@ -95,7 +126,6 @@ router.get('/', async (req, res) => {
   }
 });
 
-
 // 📌 Lấy chi tiết sản phẩm
 router.get('/:id', async (req, res) => {
   const { id } = req.params;
@@ -120,6 +150,7 @@ router.get('/:id', async (req, res) => {
     res.status(500).json({ msg: 'Lỗi máy chủ khi lấy chi tiết sản phẩm' });
   }
 });
+
 
 // 📌 Cập nhật sản phẩm
 router.put('/:id', verifyToken, isSelfOrAdmin, async (req, res) => {

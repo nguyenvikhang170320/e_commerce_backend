@@ -112,4 +112,35 @@ router.put('/:id/read', verifyToken, async (req, res) => {
     }
 });
 
+// Thêm một route mới để đánh dấu tất cả thông báo của người dùng là đã đọc
+router.put('/mark-all-as-read', verifyToken, async (req, res) => {
+    const userId = req.user.id; // Lấy userId từ token đã xác thực
+
+    if (!userId) {
+        console.log('PUT /api/notifications/mark-all-as-read: User ID missing from token');
+        return res.status(401).json({ message: 'Unauthorized: User ID not found in token' });
+    }
+
+    console.log(`PUT /api/notifications/mark-all-as-read by user ${userId}`);
+
+    try {
+        const [result] = await db.execute(
+            'UPDATE notifications SET status = "read" WHERE user_id = ? AND status = "unread"',
+            [userId]
+        );
+
+        if (result.affectedRows === 0) {
+            console.log(`Không có thông báo chưa đọc nào của người dùng ${userId} được cập nhật.`);
+            return res.status(200).json({ message: 'No unread notifications to mark as read.' });
+        }
+
+        console.log(`${result.affectedRows} thông báo của người dùng ${userId} đã được đánh dấu là đã đọc.`);
+        res.status(200).json({ message: 'All unread notifications marked as read', affectedRows: result.affectedRows });
+    } catch (err) {
+        console.error('Lỗi khi đánh dấu tất cả thông báo là đã đọc:', err);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+
 module.exports = router;

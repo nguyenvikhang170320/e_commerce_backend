@@ -4,6 +4,67 @@ const db = require('../config/db');
 const { verifyToken } = require('../utils/token');
 const denyAdmin = require('../middleware/deny_admin');
 
+
+router.get('/search', verifyToken, async (req, res, next) => {
+    const searchTerm = req.query.q;
+    let targetUserId = req.user.id;
+    const userRole = req.user.role;
+
+    if (!searchTerm) {
+        return res.status(400).json({ message: 'Search term (q) is required' });
+    }
+
+    if (userRole === 'admin' && req.query.user_id) {
+        const requestedUserId = parseInt(req.query.user_id);
+        if (isNaN(requestedUserId) || requestedUserId <= 0) {
+            return res.status(400).json({ message: 'User_id được cung cấp trong tham số truy vấn không hợp lệ.' });
+        }
+        targetUserId = requestedUserId;
+    } else if (userRole === 'seller' && req.query.user_id && parseInt(req.query.user_id) !== req.user.id) {
+        return res.status(403).json({ message: 'Người bán không được phép tìm kiếm người dùng khác\' carts.' });
+    }
+
+    try {
+        // Cập nhật câu truy vấn SQL để khớp với CartItem model của bạn
+        // Bảng `carts` của bạn có: id, user_id, product_id, quantity, image, added_at, discountPercent, shipping_fee, price
+        // Bảng `products` của bạn có: id, name, description, price, image, stock
+        // Bảng `users` của bạn có: id, name, email
+
+        const [rows] = await db.execute(
+            `SELECT
+                ci.id AS id,                  -- ✅ Đổi alias thành 'id' để khớp với Flutter CartItem.id
+                ci.quantity,
+                ci.product_id,
+                ci.price AS price,            -- ✅ Đổi alias thành 'price' để khớp với Flutter CartItem.price
+                ci.added_at,                  -- ✅ Thêm cột 'added_at'
+                ci.discountPercent,           -- ✅ Thêm cột 'discountPercent'
+                ci.shipping_fee,              -- ✅ Thêm cột 'shipping_fee'
+                p.name AS name,               -- ✅ Đổi alias thành 'name' để khớp với Flutter CartItem.productName
+                p.image AS image,             -- ✅ Đổi alias thành 'image' để khớp với Flutter CartItem.productImage (lấy từ product)
+                u.id AS user_id               -- ✅ Thêm cột 'user_id' để khớp với Flutter CartItem.userId
+                -- Nếu bạn muốn userName và userEmail, hãy thêm vào đây: u.name AS user_name, u.email AS user_email
+             FROM carts ci
+             JOIN products p ON ci.product_id = p.id
+             JOIN users u ON ci.user_id = u.id -- Giữ JOIN này để lấy user_id
+             WHERE ci.user_id = ? AND LOWER(p.name) LIKE ?`,
+            [targetUserId, `%${searchTerm.toLowerCase()}%`]
+        );
+
+        if (rows.length === 0) {
+            let message = 'Không tìm thấy sản phẩm nào trong giỏ hàng của bạn khớp với từ khóa tìm kiếm.';
+            if (userRole === 'admin' && req.query.user_id) {
+                message = `Không tìm thấy mục nào trong giỏ hàng cho ID người dùng ${targetUserId} phù hợp với thuật ngữ tìm kiếm.`;
+            }
+            return res.status(200).json({ message, cartItems: [] });
+        }
+
+        res.status(200).json(rows);
+    } catch (error) {
+        console.error('Lỗi khi tìm kiếm các mặt hàng trong giỏ hàng:', error);
+        res.status(500).json({ message: 'Có lỗi xảy ra từ phía server khi tìm kiếm giỏ hàng.', error: error.message });
+    }
+});
+
 // 📌 Lấy tất cả sản phẩm trong giỏ của user
 router.get('/', verifyToken,denyAdmin, async (req, res) => {
   const userId = req.user.id;
@@ -95,7 +156,7 @@ router.post('/', verifyToken, denyAdmin, async (req, res) => {
 
     // 5️⃣ Trả về item vừa thêm
     const [[newCartItem]] = await conn.query(
-      `SELECT c.*, p.name, p.price, p.image ,c.added_at
+      `SELECT c.*, p.name, c.price, p.image ,c.added_at
        FROM carts c 
        JOIN products p ON c.product_id = p.id
        WHERE c.user_id = ? AND c.product_id = ?

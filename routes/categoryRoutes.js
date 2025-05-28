@@ -4,6 +4,34 @@ const db = require('../config/db'); // dùng mysql2, đã cấu hình kết nố
 const { verifyToken } = require('../utils/token');
 const isSelfOrAdmin  = require('../middleware/role_admin_seller');  // Đảm bảo đã import isSelfOrAdmin middleware
 const denyAdmin = require('../middleware/deny_admin');
+
+// Tìm kiếm danh mục theo tên
+router.get('/search', async (req, res) => {
+    const searchTerm = req.query.q; // Lấy từ khóa tìm kiếm từ query parameter 'q'
+
+    if (!searchTerm) {
+        return res.status(400).json({ message: 'Search term (q) is required' });
+    }
+
+    try {
+        // Sử dụng LIKE để tìm kiếm gần đúng và CONCAT để thêm dấu %
+        // Sử dụng LOWER() để tìm kiếm không phân biệt chữ hoa/chữ thường
+        const [rows] = await db.execute(
+            `SELECT * FROM categories WHERE LOWER(name) LIKE ?`,
+            [`%${searchTerm.toLowerCase()}%`]
+        );
+
+        if (rows.length === 0) {
+            return res.status(200).json({ message: 'No categories found matching the search term.', categories: [] });
+        }
+
+        res.status(200).json(rows);
+    } catch (error) {
+        console.error('Error searching categories:', error);
+        res.status(500).json({ message: 'Failed to search categories', error: error.message });
+    }
+});
+
 // GET tất cả danh mục
 router.get('/', async (req, res) => {
   try {

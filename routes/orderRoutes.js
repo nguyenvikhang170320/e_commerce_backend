@@ -4,7 +4,6 @@ const db = require('../config/db');
 const { verifyToken } = require('../utils/token');
 const { canAccessOrderDetail } = require('../middleware/order_permission');
 
-
 // 📌 Tạo đơn hàng từ giỏ hàng
 router.post('/', verifyToken, async (req, res) => {
   const userId = req.user.id;
@@ -74,7 +73,6 @@ router.post('/', verifyToken, async (req, res) => {
     res.status(500).json({ msg: 'Lỗi khi tạo đơn hàng' });
   }
 });
-
 
 // 📌 Lấy đơn hàng của người dùng user
 router.get('/', verifyToken, async (req, res) => {
